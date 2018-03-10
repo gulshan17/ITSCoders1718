@@ -53,11 +53,10 @@ int CountTraverse()
 		//traversing till child becomes NULL(traversing Depth first)
 		while(TempAddr != NULL)
 		{
+			ptr = TempAddr;
+			
 			mkgReadNVM(TempAddr + OFFSET_childAddr, (U8 *)&value, LEN_ADDRESS);
 			TempAddr = (U8 *)value;
-			
-			mkgReadNVM(ptr + OFFSET_childAddr, (U8 *)&value, LEN_ADDRESS);
-			ptr = (U8 *)value;
 			
 			++counter;
 		}
