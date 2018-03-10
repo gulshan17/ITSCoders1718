@@ -54,7 +54,7 @@ int CountTraverse()
 		while(TempAddr != NULL)
 		{
 			mkgReadNVM(TempAddr + OFFSET_childAddr, (U8 *)&value, LEN_ADDRESS);
-			temp = (U8 *)value;
+			TempAddr = (U8 *)value;
 			
 			mkgReadNVM(ptr + OFFSET_childAddr, (U8 *)&value, LEN_ADDRESS);
 			ptr = (U8 *)value;
