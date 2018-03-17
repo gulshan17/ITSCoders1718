@@ -1,18 +1,11 @@
 #include "mk_typedef.h"
-#include "mk_NVMIO.h"
-#include "fw_SelectStatusGetResponse.h"
 #include "fw_CreateFile.h"
-#include "fw_ReadUpdate.h"
-#include "fw_Utility.h"
-#include "macros.h"
-#include "fw_DeleteFile.h"
 
-	U16 FileID = 0x00;                                  					//Initially FileID = 0x00
-	U8 *ptr = 0x00;
-	U8 fdb;
+int File_Size();
 
-void E4_fwDeleteFile()
+void fw_FreeSize()
 {
+	int size;
 	//check P1 and P2 if incorrect return 0x6B00
 	if((P1 != 0x00) || (P2 != 0x00))
 	{
@@ -20,172 +13,82 @@ void E4_fwDeleteFile()
 		return;
 	}
 	
-	// check the length of Data Field
-	if(LcLe != 2)
+	// check the length of Data Field, don't know what it should be, will update on saturday after asking Sir
+	if(LcLe != )
 	{
-		mkSetSW(0x6700);
+		mkgSetSW(0x6700);
 		return;
 	}
 	
-	//If file system present or not
-	if(getHashTable() == (U32)eepbuff)
+	/*//If file system present or not, don't know what to do, update later
+	if(getHashTable() == (U32)eepBuff)
 	{
 		mkgSetSW(TECHNICAL_PROBLEM);                    //Technical Error
 		return;
-	}
+	*/
 	
-	//FileID requested for Deletion
-	FileID = ((mkgInputBuffer[0] << 8) | (mkgInputBuffer[1]));
-	
-	//if command is for MF
-	if(FileID == FILE_ID_MF)
-	{
-		memset(eepBuff, 0xFF, 0x20000);
-		currentDF = NULL;
-		currentEF = NULL;
-		mkgSetSW(NORMAL_ENDING);
-		return;
-	}
-	
-	//if Delete command is for currently selected DF
-	else if(FileID == (returnFileId(currentDF)))
-	{
-		currentDF = DeleteFile(currentDF);
-		selectDF();
-		currentEF = NULL;
-		
-		mkgSetSW(NORMAL_ENDING);
-		return;
-	}
-	
-	//if Delete command is for currently selected EF
-	else if((currentEF != NULL) && (FileID == (returnFileId(currentEF))))
-	{
-		DeleteFile(currentEF);
-		currentEF = NULL;
-		
-		mkgSetSW(NORMAL_ENDING);
-		return;
-	}
-	
-	//Searching for the Delete file in the children of CurrentDF
-	else if( (matchChild(currentDF, FileID)) || (matchSibling(tempAddr, FileID)) )
-	{
-		DeleteFile(tempAddr);
-		currentEF = NULL;
-		
-		mkgSetSW(NORMAL_ENDING);
-		return;
-	}
-	
-	//Search file in parent
-	else if(matchParent(tempAddr = currentDF, FileID))
-	{
-		currentDF = DeleteFile(tempAddr);
-		selectDF();
-		currentEF = NULL;
-		
-		mkgSetSW(NORMAL_ENDING);
-		return;
-	}
-	
-	//search DF file in the sibling of currentDF
-	else if(matchChild(tempAddr, FileID) || (matchSibling(tempAddr, FileID)))
-	{
-		fdb = returnFileFDB(tempAddr);
-		if(isDF(fdb))
-		{
-			currentDF = DeleteFile(tempAddr);
-			selectDF();
-			currentEF = NULL;
-			
-			mkgSetSW(NORMAL_ENDING);
-			return;
-		}
-		
-		else
-		{
-			mkgSetSW(FILE_NOT_FOUND);
-			return;
-		}
-	}
+	//size of object file = number of files * sizeof a single file
+	size = 0x20000 - (File_Size() + sizeof(objFile));
 }
 
-U32 DeleteFile(U32 deleteFileAddr)
+
+int File_Size()
 {
-	U8 isFirstChild = 0x00;
-	U32 tempParentAddr = NULL, tempAddr1 = NULL, tempAddr2 = NULL, tempAddr3 = NULL;
-
-	//Storing the Address of Parent of the DeleteFile
-	mkgReadNVM(deleteFileAddr + OFFSET_PARENTADDR, (U8 *)&ptr, LEN_ADDRESS);
-	tempParentAddr = (U32)ptr;
+	U32 ptr, TempAddr, MFAddr;
+	U8 *value;
+	U16 counter;							//used to count number of files present
+	U32 total_data_size = 0x00, data_size;						 
 	
-	//checking whether the deleteFile is first child or not
-	mkgReadNVM(tempParentAddr + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
-	tempAddr1 = (U32)ptr;
-	if(tempAddr1 == deleteFileAddr)
-	{
-		isFirstChild = 0x01;
-	}
-	//if deletefile is first child then
-	if(isFirstChild)
-	{
-		//Address of Delete File sibling
-		mkgReadNVM(deleteFileAddr + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
-		tempAddr1 = (U32)ptr;
+	counter = 1;
+	top = 0;
+	
+	//storing address of Master FIle
+	MFAddr = ptr = (U32)(eepBuff + sizeof(objFile));
+	
+	do
+	{	
+		//storing the address of child of the file pointed by ptr, initially MF
+		mkgReadNVM(ptr + OFFSET_childAddr, (U8 *)&value, LEN_ADDRESS);
+		TempAddr = (U32)value;
 		
-		//setting the DeleteFile Parent's child as its sibling 
-		mkgWriteNVM(tempParentAddr + OFFSET_childAddr, (U8 *)&tempAddr1, LEN_ADDRESS);
-	
-		//cleaning memory of deleting file 
-		Put_FF(deleteFieAddr);
-		ptr = (U8 *)(deleteFileAddr);
-		memset(ptr, 0xff, 0x34);
-		
-		return tempParentAddr;
-	}
-	
-	//if deleteFile is not first child
-	else
-	{
-		//storing the address of first sibling of deleteFile
-		mkgReadNVM(tempParentAddr + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
-		tempAddr1 = (U32)ptr;
-		//traversing to previous sibling of deleteFile
-		while(tempAddr1 != deleteFileAddr)
+		//traversing till child becomes NULL(traversing Depth first)
+		while(TempAddr != NULL)
 		{
-			tempAddr2 = tempAddr1;
-			mkgReadNVM(tempAddr1 + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
-			tempAddr1 = (U32)ptr;
+			ptr = TempAddr;
+			mkgReadNVM(ptr + OFFSET_FILESIZE, (U8 *)&data_size, FILESIZE);
+			total_data_size += data_size;
+			
+			mkgReadNVM(TempAddr + OFFSET_childAddr, (U8 *)&value, LEN_ADDRESS);
+			TempAddr = (U8 *)value;
+			
+			++counter;
+			
 		}
-		//storing address of next sibling of deleteFile
-		mkgReadNVM(tempAddr1 + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
-		tempAddr3 = (U32)ptr;
-		//setting deletefile previous sibling as deleteFile next sibling
-		mkgWriteNVM(tempAddr2 + OFFSET_SIBLINGADDR, (U8 *)&tempAddr3, LEN_ADDRESS);
 		
-		//cleaning memory of deleting file 
-		Put_FF(deleteFieAddr);
-		ptr = (U8 *)(deleteFileAddr);
-		memset(ptr, 0xff, 0x34);
+		//storing the address of sibling
+		mkgReadNVM(ptr + OFFSET_SIBLINGADDR, (U8 *)&value, LEN_ADDRESS);
+		TempAddr = (U32)value;
 		
-		return tempParentAddr;
-	}
-}
+		//if sibling is NULL, then point to parent sibling, parent is already counted
+		while((TempAddr == NULL) && (ptr != MFAddr))
+		{
+			mkgReadNVM(ptr + OFFSET_PARENTADDR, (U8 *)&value, LEN_ADDRESS);
+			ptr = (U32)value;
+				
+			mkgReadNVM(ptr + OFFSET_SILBLINGADDR, (U8 *)&value, LEN_ADDRESS);
+			TempAddr = (U32)value;
+		}
+		
+		//tempAddr == NULL means ptr points to MF(already counted)
+		if(TempAddr != NULL)
+		{
+			ptr = TempAddr;
+			mkgReadNVM(ptr + OFFSET_FILESIZE, (U8 *)&data_size, FILESIZE);
+			total_data_size += data_size;
 
-void Put_FF(U32 file){
-U8 *ptr;
-U32 container;
-mkgReadNVM(file + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
-container = (U32)ptr;
-	if(container != NULL){
-		Put_FF(container);
-		memset(ptr, 0xFF, 0x34);
-	}
-	mkgWriteNVM(file + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
-	container = (U32)ptr;
-	if(container != NULL){
-		Put_FF(container);
-		memset(ptr, 0xFF, 0x34);
-	}
+			++counter;
+		}
+	}while(TempAddr != NULL);
+	
+	return ((counter * sizeof(objFile)) + total_data_size);
 }
