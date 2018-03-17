@@ -28,15 +28,16 @@ void fw_FreeSize()
 	*/
 	
 	//size of object file = number of files * sizeof a single file
-	size = (CountTraverse() * sizeof(objFile));
+	size = 0x20000 - (File_Size() + sizeof(objFile));
 }
 
 
-int CountTraverse()
+int File_Size()
 {
 	U32 ptr, TempAddr, MFAddr;
-	U8 top, *value;
-	U16 counter;						//used to count number of files present 
+	U8 *value;
+	U16 counter;							//used to count number of files present
+	U32 total_data_size = 0x00, data_size;						 
 	
 	counter = 1;
 	top = 0;
@@ -54,11 +55,14 @@ int CountTraverse()
 		while(TempAddr != NULL)
 		{
 			ptr = TempAddr;
+			mkgReadNVM(ptr + OFFSET_FILESIZE, (U8 *)&data_size, FILESIZE);
+			total_data_size += data_size;
 			
 			mkgReadNVM(TempAddr + OFFSET_childAddr, (U8 *)&value, LEN_ADDRESS);
 			TempAddr = (U8 *)value;
 			
 			++counter;
+			
 		}
 		
 		//storing the address of sibling
@@ -79,9 +83,12 @@ int CountTraverse()
 		if(TempAddr != NULL)
 		{
 			ptr = TempAddr;
+			mkgReadNVM(ptr + OFFSET_FILESIZE, (U8 *)&data_size, FILESIZE);
+			total_data_size += data_size;
+
 			++counter;
 		}
 	}while(TempAddr != NULL);
 	
-	return counter;
+	return ((counter * sizeof(objFile)) + total_data_size);
 }
