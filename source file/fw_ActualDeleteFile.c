@@ -40,9 +40,11 @@ void E4_fwDeleteFile()
 	//if command is for MF
 	if(FileID == FILE_ID_MF)
 	{
-		memset(eepBuff, 0xFF, 0x20000);
+		set_FF(eepBuff + sizeof(objFile), 0x20000 - sizeof(objFile));
 		currentDF = NULL;
 		currentEF = NULL;
+		firstCommand = 1;
+		setHashTable(eepBuff);
 		mkgSetSW(NORMAL_ENDING);
 		return;
 	}
@@ -134,13 +136,11 @@ U32 DeleteFile(U32 deleteFileAddr)
 		mkgReadNVM(deleteFileAddr + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
 		tempAddr1 = (U32)ptr;
 		
-		//setting the DeleteFile Parent's child as its sibling 
+		//setting the DeleteFile sibling as child of it's Parent
 		mkgWriteNVM(tempParentAddr + OFFSET_childAddr, (U8 *)&tempAddr1, LEN_ADDRESS);
 	
 		//cleaning memory of deleting file 
-		Put_FF(deleteFieAddr);
-		ptr = (U8 *)(deleteFileAddr);
-		memset(ptr, 0xff, 0x34);
+		Put_FF(deleteFileAddr);
 		
 		return tempParentAddr;
 	}
@@ -165,9 +165,7 @@ U32 DeleteFile(U32 deleteFileAddr)
 		mkgWriteNVM(tempAddr2 + OFFSET_SIBLINGADDR, (U8 *)&tempAddr3, LEN_ADDRESS);
 		
 		//cleaning memory of deleting file 
-		Put_FF(deleteFieAddr);
-		ptr = (U8 *)(deleteFileAddr);
-		memset(ptr, 0xff, 0x34);
+		Put_FF(deleteFileAddr);
 		
 		return tempParentAddr;
 	}
@@ -180,12 +178,11 @@ mkgReadNVM(file + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
 container = (U32)ptr;
 	if(container != NULL){
 		Put_FF(container);
-		memset(ptr, 0xFF, 0x34);
 	}
 	mkgWriteNVM(file + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
 	container = (U32)ptr;
 	if(container != NULL){
 		Put_FF(container);
-		memset(ptr, 0xFF, 0x34);
 	}
+	set_FF(file, sizeof(objFile));
 }
