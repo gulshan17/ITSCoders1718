@@ -1,7 +1,7 @@
 #include "mk_typedef.h"
 #include "fw_CreateFile.h"
 
-int freeSize();
+int File_Size();
 
 void fw_FreeSize()
 {
