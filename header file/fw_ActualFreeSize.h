@@ -2,6 +2,6 @@
 	#define _FREESIZE_H
 	
 	void fw_FreeSize();
-	int CountTraverse(); //Use Depth First Search to count the number of files present
+	int File_Size(); //Use Depth First Search to count the number of files presentn and return file size
 	
 	#endif
