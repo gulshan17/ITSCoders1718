@@ -23,12 +23,12 @@ void E4_fwDeleteFile()
 	// check the length of Data Field
 	if(LcLe != 2)
 	{
-		mkSetSW(0x6700);
+		mkgSetSW(0x6700);
 		return;
 	}
 	
 	//If file system present or not
-	if(getHashTable() == (U32)eepbuff)
+	if(getHashTable() == (U32)eepBuff)
 	{
 		mkgSetSW(TECHNICAL_PROBLEM);                    //Technical Error
 		return;
