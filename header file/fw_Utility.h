@@ -52,6 +52,6 @@ U8 returnIncreaseAllowedStatus(U32);
 
 U16 VerifyKey(U8);
 
-void set_FF(U32, U32);
+void set_FF(U32 dest, U32 length);                        //set FF starting from dest upto length
 
 #endif
