@@ -171,18 +171,23 @@ U32 DeleteFile(U32 deleteFileAddr)
 	}
 }
 
-void Put_FF(U32 file){
-U8 *ptr;
-U32 container;
-mkgReadNVM(file + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
-container = (U32)ptr;
-	if(container != NULL){
-		Put_FF(container);
-	}
-	mkgWriteNVM(file + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
+void Put_FF(U32 file)
+{
+	U8 *ptr;
+	U32 container;
+	U16 fileSize;
+	mkgReadNVM(file + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
 	container = (U32)ptr;
-	if(container != NULL){
+	if(container != NULL)
+	{
 		Put_FF(container);
 	}
-	set_FF(file, sizeof(objFile));
+	mkgReadNVM(file + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
+	container = (U32)ptr;
+	if(container != NULL)
+	{
+		Put_FF(container);
+	}
+	mkgReadNVM(file + OFFSET_FILESIZE, (U8 *)fileSize, LEN_FILESIZE);
+	set_FF(file, sizeof(objFile) + fileSize);
 }
