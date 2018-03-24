@@ -81,7 +81,7 @@ void E4_fwDeleteFile()
 	}
 	
 	//Search file in parent
-	else if(matchParent(tempAddr = currentDF, FileID))
+	else if(matchParent(tempAddr = currentDF, FileID))		//here tempAddr is a global variable, changed inside the function matchParent
 	{
 		currentDF = DeleteFile(tempAddr);
 		selectDF();
