@@ -7,13 +7,111 @@
 #include "macros.h"
 #include "fw_DeleteFile.h"
 
+U8 value_array[256];
 void fw_ResizeFile()
 {
-    U32 fileAddr;                   //stores file to be resized
+    U32 fileAddr,count;                   //stores file to be resized
     U16 newsize, oldsize, freesize;
 
     //read new size
+    if( !((P1 == 0x00) && (P2 == 0x00)) )	
+	{
+		mkgSetSW(0x6B00);
+		return;
+	}
 
+    FCP=mkgInputBuffer[0];
+	FCP_len=mkgInputBuffer[1];
+
+	//Check for FCP template
+	//First tag in Data part of TLV objects
+	if(FCP != 0x62) //check for FCP tag
+	{
+		mkgSetSW(0x6F00);
+		return; 
+	}
+    
+
+    for(count=2;count <= FCP_len+1;)
+    {
+        switch(mkgInputBuffer[count])
+        {
+            case FILE_ID_83:
+                    if(mkgInputBuffer[count+1] == 0x02)	//check length
+	                {
+	    	            FileId  = byteConverter(mkgInputBuffer[count+2],8,mkgInputBuffer[count+3]);	//"str" to be replaced with defined structure name
+		            }
+                    else
+                    {
+                        mkgSetSW(0x6700);
+		                return;    
+                    }
+                    break;
+        
+            case FILE_SIZE_80:
+                    if(mkgInputBuffer[count+1] == 0x02 )
+                    {
+                        newsize = byteConverter(mkgInputBuffer[count+2],8,mkgInputBuffer[count+3]); 
+                    }
+                    break;
+
+            case 0xA5:
+                    filling_length = mkgInputBuffer[count + 1 ] - 2;
+                    if(mkgInputBuffer[tagOffset+2] == 0xC1)
+                    {
+                        if(filling_length == mkgInputBuffer[count + 3])
+                        {
+                            value_array[0] = 1;
+                            for(i=1;i<=filling_length;i++)
+                            {
+                                value_array[i]=mkgInputBuffer[count+4+i];
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            flagCounter=1;
+                            return;
+                        }
+                    }
+                    else if(mkgInputBuffer[count + 2] == 0xC2)
+                    {
+                        if(filling_length==mkgInputBuffer[count + 3])
+                        {
+                            value_array[0] = 2;
+                            for(i=1;i<=filling_length;i++)
+                            {
+                                value_array[i]=mkgInputBuffer[count + 4 + i];
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            flagCounter=1;
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        flagCounter=1;
+                            return;
+                    }
+                    break;
+        }
+        count=(count+1)+mkgInputBuffer[count+1]+1;           
+    }
+    
+    //if resize command is for currently selected EF
+	if((currentEF != NULL) && (FileID == (returnFileId(currentEF))))
+	{
+		file=currentEF;
+	}
+    else if( (matchChild(currentDF, FileID)) || (matchSibling(tempAddr, FileID)) )
+	{
+		file=currentEF;
+	}
+    
+	
     mkgReadNVM(file + OFFSET_FILESIZE, (U8 *)&oldsize, LEN_FILESIZE);           //retrieve old file size
     if(newsize > oldsize)
     {
@@ -107,6 +205,47 @@ void Increase_MoveFiles(U32 fileAddr, U16 length)
         tempAddr1 += sizeof(objFile) + fileSize - 1; 
         tempAddr2 = tempAddr1 + length;
         mkgReverseWriteNVM(tempAddr2, (U8 *)tempAddr1, sizeof(objFile) + fileSize);
+    }
+
+    if(value_array[0] == 0)
+    {
+       tempAddr = fileAddr;
+       tempAddr += sizeof(objFile) + oldsize;
+       for(i=0;i<newsize;i++)
+       {
+           mkgWriteNVMOne(tempAddr,0xFF);
+           tempAddr++;
+       } 
+    }
+    else if(value_array[0] == 1)
+    {
+       tempAddr = fileAddr;
+       tempAddr += sizeof(objFile) + oldsize;
+       for(i=0,j=1;i<newsize;i++,j++)
+       {
+           if(j<filling_length)
+           {
+                mkgWriteNVMOne(tempAddr,value_array[j]);
+                tempAddr++;
+           }
+           else
+           {
+                mkgWriteNVMOne(tempAddr,value_array[filling_length]);
+                tempAddr++; 
+           }
+       } 
+    }
+    if(value_array[0] == 2)
+    {
+       tempAddr = fileAddr;
+       tempAddr += sizeof(objFile) + oldsize;
+
+       for(i=0;i<newsize;i++)
+       {
+           j=( i % filling_length ) + 1;
+           mkgWriteNVMOne(tempAddr,value_array[j]);
+           tempAddr++; 
+       } 
     }
     return;
 }
