@@ -6,6 +6,7 @@
 #include "mk_typedef.h"
 
 extern void mkgSetSW(U16);
+U16 totalusedmemory = 0;
 
 //______________________NVM FUNCTIONS___________________________
 
@@ -335,12 +336,58 @@ U8 searchForSFI(U32 tempAddr,U16 SFID)
 		return 0;
 }
 
-void set_FF(U32 dest, U32 length)
+U16 calMemorySize(U32 fileAddr)
 {
-	int i;
-	for(i = 0; i < length; ++i)
-	{
-		*((U8 *)dest) = 0xFF;
-		++dest;
+	U16 localmemorysize;
+	
+	if(isDF(returnFileFDB(fileAddr))){
+		mkgReadNVM(fileAddr + OFFSET_TOTALFILESIZE, &localmemorysize, LEN_FILESIZE);
+		if(localmemorysize == 0x0000){
+			localmemorysize = 52;
+		}
+		return (U16)localmemorysize;
+	}
+	else{
+		if((returnFileFDB(fileAddr) & 7) == 0x01)    //Last 3 bits of FDB is 001 is for transparent file otherwise cyclic or linear
+		{	 
+			localmemorysize = (returnFileSize(fileAddr) + 52);	
+			return (U16)localmemorysize;
+		}
+		localmemorysize = (returnRecordLen(fileAddr) * returnFileSize(fileAddr)) + 52;	
+		return (U16)localmemorysize;
 	}
 }
+
+void SetTotalFileSize(U32 fileAddr)
+ {
+	U8 *ptr;
+	U16 totalfilesize, memorysize;
+	
+	memorysize = calMemorySize(fileAddr);
+	
+	if(INS == 0xE0)
+	{
+		while(fileAddr != NULL)
+		{
+			mkgReadNVM(fileAddr + OFFSET_TOTALFILESIZE, (U8 *)&ptr, LEN_FILESIZE);
+			totalfilesize = (U16)ptr;
+			totalfilesize = totalfilesize + memorysize;
+			mkgWriteNVM(fileAddr +  OFFSET_TOTALFILESIZE, (U8 *)&totalfilesize, LEN_FILESIZE);
+			mkgReadNVM(fileAddr + OFFSET_PARENTADDR, (U8 *)&ptr, LEN_ADDRESS);
+			fileAddr = (U32)ptr;
+		}
+	}
+	else
+	{
+		while(fileAddr != NULL)
+		{
+			mkgReadNVM(fileAddr + OFFSET_TOTALFILESIZE, (U8 *)&ptr, LEN_FILESIZE);
+			totalfilesize = (U16)ptr;
+			totalfilesize = totalfilesize - memorysize;
+			mkgWriteNVM(fileAddr +  OFFSET_TOTALFILESIZE, (U8 *)&totalfilesize, LEN_FILESIZE);
+			mkgReadNVM(fileAddr + OFFSET_PARENTADDR, (U8 *)&ptr, LEN_ADDRESS);
+			fileAddr = (U32)ptr;
+		}
+	}
+ }
+

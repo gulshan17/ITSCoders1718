@@ -17,6 +17,7 @@ U8 adf_selected;
 U32 tempAddr;
 U32 tempAddr_SFI;
 U8 gLe;
+extern U16 totalusedmemory;
 
 U8 returnReadUpdateAccessConditionByte( U32 );
 U8 returnRehabilitateInvalidateAccessConditionByte(U32 fileAddr);
@@ -52,6 +53,7 @@ U8 returnIncreaseAllowedStatus(U32);
 
 U16 VerifyKey(U8);
 
-void set_FF(U32 dest, U32 length);                        //set FF starting from dest upto length
+void SetTotalFileSize(U32);
+U16 calMemorySize(U32);
 
 #endif
