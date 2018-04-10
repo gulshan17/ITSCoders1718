@@ -6,15 +6,18 @@
 #include "fw_Utility.h"
 #include "macros.h"
 #include "fw_DeleteFile.h"
+#include "fw_ResizeFile.h"
+#include "fw_FreeSize.h"
 
-U8 value_array[256];
+U8 value_array[256] = {0}, filling_length;
 void fw_ResizeFile()
 {
-    U32 fileAddr,count;                   //stores file to be resized
+    U8 FCP_len = 0x00, FCP, i;
     U16 newsize, oldsize, freesize;
+    U32 fileAddr, count, FileID;                   //stores file to be resized
 
     //read new size
-    if( !((P1 == 0x00) && (P2 == 0x00)) )	
+    if((P1 != 0x00) || (P2 != 0x00))	
 	{
 		mkgSetSW(0x6B00);
 		return;
@@ -32,14 +35,14 @@ void fw_ResizeFile()
 	}
     
 
-    for(count=2;count <= FCP_len+1;)
+    for(count=2; count <= (U32)FCP_len+1;)
     {
         switch(mkgInputBuffer[count])
         {
             case FILE_ID_83:
                     if(mkgInputBuffer[count+1] == 0x02)	//check length
 	                {
-	    	            FileId  = byteConverter(mkgInputBuffer[count+2],8,mkgInputBuffer[count+3]);	//"str" to be replaced with defined structure name
+	    	            FileID  = byteConverter(mkgInputBuffer[count+2],8,mkgInputBuffer[count+3]);	//"str" to be replaced with defined structure name
 		            }
                     else
                     {
@@ -57,7 +60,7 @@ void fw_ResizeFile()
 
             case 0xA5:
                     filling_length = mkgInputBuffer[count + 1 ] - 2;
-                    if(mkgInputBuffer[tagOffset+2] == 0xC1)
+                    if(mkgInputBuffer[count+2] == 0xC1)
                     {
                         if(filling_length == mkgInputBuffer[count + 3])
                         {
@@ -65,12 +68,11 @@ void fw_ResizeFile()
                             for(i=1;i<=filling_length;i++)
                             {
                                 value_array[i]=mkgInputBuffer[count+4+i];
-                                return;
                             }
                         }
                         else
                         {
-                            flagCounter=1;
+                            mkgSetSW(0x6700);
                             return;
                         }
                     }
@@ -82,21 +84,19 @@ void fw_ResizeFile()
                             for(i=1;i<=filling_length;i++)
                             {
                                 value_array[i]=mkgInputBuffer[count + 4 + i];
-                                return;
                             }
                         }
                         else
                         {
-                            flagCounter=1;
+                            mkgSetSW(0x6700);
                             return;
                         }
                     }
                     else
                     {
-                        flagCounter=1;
+                        mkgSetSW(0x6E00);
                             return;
                     }
-                    break;
         }
         count=(count+1)+mkgInputBuffer[count+1]+1;           
     }
@@ -104,26 +104,26 @@ void fw_ResizeFile()
     //if resize command is for currently selected EF
 	if((currentEF != NULL) && (FileID == (returnFileId(currentEF))))
 	{
-		file=currentEF;
+		fileAddr=currentEF;
 	}
     else if( (matchChild(currentDF, FileID)) || (matchSibling(tempAddr, FileID)) )
 	{
-		file=currentEF;
+		fileAddr=currentEF;
 	}
     
 	
-    mkgReadNVM(file + OFFSET_FILESIZE, (U8 *)&oldsize, LEN_FILESIZE);           //retrieve old file size
+    mkgReadNVM(fileAddr + OFFSET_FILESIZE, (U8 *)&oldsize, LEN_FILESIZE);           //retrieve old file size
     if(newsize > oldsize)
     {
         freesize = 0x20000 - (File_Size() + sizeof(objFile));                   //calculate free space available
         newsize -= oldsize;                                                     //newsize = size to be increased
         if(freesize < newsize)                                                  //free space available < additional space return
         {
-            mkgSetSW(NOT_ENORUGH_MEMORY);
+            mkgSetSW(NOT_ENOUGH_MEMORY);
             return;
         }
 
-        Increase_MoveFiles(fileAddr, newsize);
+        Increase_MoveFiles(fileAddr, newsize, oldsize);
 
         //update file size
     }
@@ -137,10 +137,10 @@ void fw_ResizeFile()
     }
 }
 
-void Increase_MoveFiles(U32 fileAddr, U16 length)
+void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
 {
     U32 tempAddr[2500], tempAddr1, tempAddr2, tempAddr3;
-    U16 fileSize, i;
+    U16 fileSize, i, j;
     U8 *ptr;
 
     i = 0;
@@ -189,12 +189,12 @@ void Increase_MoveFiles(U32 fileAddr, U16 length)
             while(tempAddr3 != tempAddr1)
             {
                 tempAddr2 = tempAddr3;
-                mkgReadNVM(tempAddr2 + OFFSET_SIBLING, (U8 *)&ptr, LEN_ADDRESS);
+                mkgReadNVM(tempAddr2 + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
                 tempAddr3 = (U32)ptr;
             }
 
             tempAddr3 += length;
-            mkgWriteNVM(tempAddr2 + OFFSET_SIBLING, (U8 *)&tempAddr3, LEN_ADDRESS);     //change the sibling address to new location of file
+            mkgWriteNVM(tempAddr2 + OFFSET_SIBLINGADDR, (U8 *)&tempAddr3, LEN_ADDRESS);     //change the sibling address to new location of file
         }
 
         mkgReadNVM(tempAddr1 + OFFSET_FILESIZE, (U8 *)&fileSize, LEN_FILESIZE);
@@ -209,51 +209,52 @@ void Increase_MoveFiles(U32 fileAddr, U16 length)
 
     if(value_array[0] == 0)
     {
-       tempAddr = fileAddr;
-       tempAddr += sizeof(objFile) + oldsize;
-       for(i=0;i<newsize;i++)
+       tempAddr1 = fileAddr;
+       tempAddr1 += (sizeof(objFile) + oldsize);
+       for(i=0;i<length;i++)
        {
-           mkgWriteNVMOne(tempAddr,0xFF);
-           tempAddr++;
+           mkgWriteNVMOne(tempAddr1,0xFF);
+           tempAddr1++;
        } 
     }
     else if(value_array[0] == 1)
     {
-       tempAddr = fileAddr;
-       tempAddr += sizeof(objFile) + oldsize;
-       for(i=0,j=1;i<newsize;i++,j++)
+       tempAddr1 = fileAddr;
+       tempAddr1 += sizeof(objFile) + oldsize;
+       for(i=0,j=1;i<length;i++,j++)
        {
            if(j<filling_length)
            {
-                mkgWriteNVMOne(tempAddr,value_array[j]);
-                tempAddr++;
+                mkgWriteNVMOne(tempAddr1,value_array[j]);
+                tempAddr1++;
            }
            else
            {
-                mkgWriteNVMOne(tempAddr,value_array[filling_length]);
-                tempAddr++; 
+                mkgWriteNVMOne(tempAddr1,value_array[filling_length]);
+                tempAddr1++; 
            }
        } 
     }
     if(value_array[0] == 2)
     {
-       tempAddr = fileAddr;
-       tempAddr += sizeof(objFile) + oldsize;
+       tempAddr1 = fileAddr;
+       tempAddr1 += sizeof(objFile) + oldsize;
 
-       for(i=0;i<newsize;i++)
+       for(i=0;i<length;i++)
        {
            j=( i % filling_length ) + 1;
-           mkgWriteNVMOne(tempAddr,value_array[j]);
-           tempAddr++; 
+           mkgWriteNVMOne(tempAddr1,value_array[j]);
+           tempAddr1++; 
        } 
     }
     return;
 }
 
-void Decrease_MoveFiles(U32 fileAdddr, U16 length)
+void Decrease_MoveFiles(U32 fileAddr, U16 length)
 {
-    U32 tempAddr1, tempAddr2, tempAddr3, tempAddr4,tempAddr5;
-    U16 fileSize;
+    U8 *ptr;
+	U16 fileSize;
+	U32 tempAddr1, tempAddr2, tempAddr3, tempAddr4,tempAddr5;
 
     tempAddr1 = (U32)getHashTable();
     setHashTable(tempAddr1 - length);                   //change the next allocation address
@@ -301,12 +302,12 @@ void Decrease_MoveFiles(U32 fileAdddr, U16 length)
             while(tempAddr5 != tempAddr2)
             {
                 tempAddr4 = tempAddr5;
-                mkgReadNVM(tempAddr4 + OFFSET_SIBLING, (U8 *)&ptr, LEN_ADDRESS);
+                mkgReadNVM(tempAddr4 + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
                 tempAddr5 = (U32)ptr;
             }
 
             tempAddr5 -= length;
-            mkgWriteNVM(tempAddr4 + OFFSET_SIBLING, (U8 *)&tempAddr5, LEN_ADDRESS);         //change the sibling address to new location of file
+            mkgWriteNVM(tempAddr4 + OFFSET_SIBLINGADDR, (U8 *)&tempAddr5, LEN_ADDRESS);         //change the sibling address to new location of file
         }
         mkgWriteNVM(tempAddr2 - length, (U8 *)tempAddr2, sizeof(objFile) + fileSize);       //shift the file to new location required
         
