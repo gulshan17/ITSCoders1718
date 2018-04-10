@@ -166,12 +166,15 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
         tempAddr1 = tempAddr[i--];
 
         //change the child Parent address to new location of file
-        mkgReadNVM(tempAddr1 + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);      
+        mkgReadNVM(tempAddr1 + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
         tempAddr2 = (U32)ptr;
-        if(tempAddr2 != NULL)
+        tempAddr3 = tempAddr1 + length;
+        while(tempAddr2 != NULL)
         {
-            tempAddr3 = tempAddr1 + length;
             mkgWriteNVM(tempAddr2 + OFFSET_PARENTADDR, (U8 *)&tempAddr3, LEN_ADDRESS);
+
+            mkgReadNVM(tempAddr2 + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
+            tempAddr2 = (U32)ptr;
         }
 
         //if file is first child then its Parent's child address need to be changed else file sibling address need to be changed
@@ -260,31 +263,28 @@ void Decrease_MoveFiles(U32 fileAddr, U16 length)
     setHashTable(tempAddr1 - length);                   //change the next allocation address
 
     mkgReadNVM(fileAddr + OFFSET_FILESIZE, (U8 *)&fileSize, LEN_FILESIZE);
-    if(fileSize == NULL)
-    {
-        fileSize = 0x00;
-    }
     tempAddr2 = fileAddr + sizeof(objFile) + fileSize;                          //contains the address of first file which is to be moved
-
-    mkgReadNVM(tempAddr2 + OFFSET_FILESIZE, (U8 *)&fileSize, LEN_FILESIZE);
-    if(fileSize == NULL)
-    {
-        fileSize = 0x00;
-    }
-    tempAddr3 = tempAddr2 + sizeof(objFile) + fileSize;                          //contains the address of the second file which is to be moved     
 
     //this part shift the files and change the address as required
     while(tempAddr2 != tempAddr1)                                               
     {
-        tempAddr4 = tempAddr2;
+        mkgReadNVM(tempAddr2 + OFFSET_FILESIZE, (U8 *)&fileSize, LEN_FILESIZE);
+        if(fileSize == NULL)
+        {
+            fileSize = 0x00;
+        }
+        tempAddr3 = tempAddr2 + sizeof(objFile) + fileSize;                          //contains the address of the second file which is to be moved     
 
         //change the child Parent address to new location of file
-        mkgReadNVM(tempAddr4 + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
+        mkgReadNVM(tempAddr2 + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
         tempAddr4 = (U32)ptr;
-        if(tempAddr4 != NULL)
+        tempAddr5 = tempAddr2 - length;
+        while(tempAddr4 != NULL)
         {
-            tempAddr5 = tempAddr2 - length;
             mkgWriteNVM(tempAddr4 + OFFSET_PARENTADDR, (U8 *)&tempAddr5, LEN_ADDRESS);
+
+            mkgReadNVM(tempAddr4 + OFFSET_SIBLINGADDR, (U8 *)&ptr, LEN_ADDRESS);
+            tempAddr4 = (U32)ptr;
         }
 
         //if file is first child then its Parent's child address need to be changed else file sibling address need to be changed
@@ -313,13 +313,6 @@ void Decrease_MoveFiles(U32 fileAddr, U16 length)
         
         //update tempAddr2, tempAddr3 to next files to be shift
         tempAddr2 = tempAddr3;
-        mkgReadNVM(tempAddr2 + OFFSET_FILESIZE, (U8 *)&fileSize, LEN_FILESIZE);
-        if(fileSize == NULL)
-        {
-            fileSize = 0x00;
-        }
-        tempAddr3 = tempAddr2 + sizeof(objFile) + fileSize;
-
     }
     return;
 }
