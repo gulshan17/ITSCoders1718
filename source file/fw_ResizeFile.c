@@ -13,8 +13,15 @@ U8 value_array[256] = {0}, filling_length;
 void fw_ResizeFile()
 {
     U8 FCP_len = 0x00, FCP, i;
-    U16 newsize, oldsize, freesize;
-    U32 fileAddr, count, FileID;                   //stores file to be resized
+    U16 oldsize, freesize;
+    U32 fileAddr = NULL, count, FileID;                   //stores file to be resized
+
+	//If file system present or not
+	if(getHashTable() == (U32)eepBuff)
+	{
+		mkgSetSW(TECHNICAL_PROBLEM);                    //Technical Error
+		return;
+	}
 
     //read new size
     if((P1 != 0x00) || (P2 != 0x00))	
@@ -22,6 +29,8 @@ void fw_ResizeFile()
 		mkgSetSW(0x6B00);
 		return;
 	}
+
+	//newsize = ((mkgInputBuffer[0] << 8) | (mkgInputBuffer[1]));
 
     FCP=mkgInputBuffer[0];
 	FCP_len=mkgInputBuffer[1];
@@ -33,9 +42,9 @@ void fw_ResizeFile()
 		mkgSetSW(0x6F00);
 		return; 
 	}
-    
 
-    for(count=2; count <= (U32)FCP_len+1;)
+
+    for(count=2; count < LcLe;)
     {
         switch(mkgInputBuffer[count])
         {
@@ -95,10 +104,10 @@ void fw_ResizeFile()
                     else
                     {
                         mkgSetSW(0x6E00);
-                            return;
+                        return;
                     }
         }
-        count=(count+1)+mkgInputBuffer[count+1]+1;           
+        count=(count+1)+mkgInputBuffer[count+1]+1;          
     }
     
     //if resize command is for currently selected EF
@@ -110,20 +119,18 @@ void fw_ResizeFile()
 	{
 		fileAddr=currentEF;
 	}
-    
 	
     mkgReadNVM(fileAddr + OFFSET_FILESIZE, (U8 *)&oldsize, LEN_FILESIZE);           //retrieve old file size
     if(newsize > oldsize)
     {
         freesize = 0x20000 - (File_Size() + sizeof(objFile));                   //calculate free space available
-        newsize -= oldsize;                                                     //newsize = size to be increased
-        if(freesize < newsize)                                                  //free space available < additional space return
+        if(freesize < (newsize - oldsize))                                                  //free space available < additional space return
         {
             mkgSetSW(NOT_ENOUGH_MEMORY);
             return;
         }
 
-        Increase_MoveFiles(fileAddr, newsize, oldsize);
+        Increase_MoveFiles(fileAddr, oldsize);
 
         //update file size
     }
@@ -131,23 +138,28 @@ void fw_ResizeFile()
     else if(oldsize > newsize)
     {
         newsize = oldsize - newsize;
-        Decrease_MoveFiles(fileAddr, newsize);
+        Decrease_MoveFiles(fileAddr, oldsize);
 
         //update file size
     }
+	
+
+	mkgSetSW(NORMAL_ENDING);
+	return;
 }
 
-void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
+void Increase_MoveFiles(U32 fileAddr, U16 oldsize)
 {
     U32 tempAddr[2500], tempAddr1, tempAddr2, tempAddr3;
-    U16 fileSize, i, j;
+    U16 fileSize, i, j, changeLength = newsize - oldsize;
     U8 *ptr;
 
     i = 0;
     tempAddr1 = fileAddr;
     tempAddr2 = (U32)getHashTable();               
-    setHashTable(tempAddr2 + length);               //change the next allocation address
-    while(tempAddr1 != tempAddr2)
+    setHashTable(tempAddr2 + changeLength);               //change the next allocation address
+
+	while(tempAddr1 != tempAddr2)
     {
         tempAddr[i++] = tempAddr1;                  //saving the addresses of files need to be moved in array
 
@@ -159,6 +171,8 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
         tempAddr1 += sizeof(objFile) + fileSize;                //pointing to next file in the memory
     }
 
+	mkgWriteNVM(fileAddr + OFFSET_FILESIZE, (U8*)&newsize, LEN_FILESIZE);       //change the filesize offset to newsize
+
     //this part shift the files and change the address as required
     --i;
     while(i > 0)                        
@@ -168,7 +182,7 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
         //change the child Parent address to new location of file
         mkgReadNVM(tempAddr1 + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
         tempAddr2 = (U32)ptr;
-        tempAddr3 = tempAddr1 + length;
+        tempAddr3 = tempAddr1 + changeLength;
         while(tempAddr2 != NULL)
         {
             mkgWriteNVM(tempAddr2 + OFFSET_PARENTADDR, (U8 *)&tempAddr3, LEN_ADDRESS);
@@ -184,7 +198,7 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
         tempAddr3 = (U32)ptr;
         if(tempAddr3 == tempAddr1)                      //check whether file is first child or not
         {
-            tempAddr3 += length;
+            tempAddr3 += changeLength;
             mkgWriteNVM(tempAddr2 + OFFSET_childAddr, (U8 *)&tempAddr3, LEN_ADDRESS);
         }
         else
@@ -196,7 +210,7 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
                 tempAddr3 = (U32)ptr;
             }
 
-            tempAddr3 += length;
+            tempAddr3 += changeLength;
             mkgWriteNVM(tempAddr2 + OFFSET_SIBLINGADDR, (U8 *)&tempAddr3, LEN_ADDRESS);     //change the sibling address to new location of file
         }
 
@@ -206,7 +220,7 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
             fileSize = 0x00;
         }
         tempAddr1 += sizeof(objFile) + fileSize - 1; 
-        tempAddr2 = tempAddr1 + length;
+        tempAddr2 = tempAddr1 + changeLength;
         mkgReverseWriteNVM(tempAddr2, (U8 *)tempAddr1, sizeof(objFile) + fileSize);
     }
 
@@ -214,7 +228,7 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
     {
        tempAddr1 = fileAddr;
        tempAddr1 += (sizeof(objFile) + oldsize);
-       for(i=0;i<length;i++)
+       for(i=0;i<changeLength;i++)
        {
            mkgWriteNVMOne(tempAddr1,0xFF);
            tempAddr1++;
@@ -224,7 +238,7 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
     {
        tempAddr1 = fileAddr;
        tempAddr1 += sizeof(objFile) + oldsize;
-       for(i=0,j=1;i<length;i++,j++)
+       for(i=0,j=1;i<changeLength;i++,j++)
        {
            if(j<filling_length)
            {
@@ -243,7 +257,7 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
        tempAddr1 = fileAddr;
        tempAddr1 += sizeof(objFile) + oldsize;
 
-       for(i=0;i<length;i++)
+       for(i=0;i<changeLength;i++)
        {
            j=( i % filling_length ) + 1;
            mkgWriteNVMOne(tempAddr1,value_array[j]);
@@ -253,14 +267,15 @@ void Increase_MoveFiles(U32 fileAddr, U16 length, U16 oldsize)
     return;
 }
 
-void Decrease_MoveFiles(U32 fileAddr, U16 length)
+void Decrease_MoveFiles(U32 fileAddr, U16 oldsize)
 {
     U8 *ptr;
-	U16 fileSize;
+	U16 fileSize, changeLength = oldsize - newsize;
 	U32 tempAddr1, tempAddr2, tempAddr3, tempAddr4,tempAddr5;
 
     tempAddr1 = (U32)getHashTable();
-    setHashTable(tempAddr1 - length);                   //change the next allocation address
+    setHashTable(tempAddr1 - changeLength);                   //change the next allocation address
+	mkgWriteNVM(fileAddr + OFFSET_FILESIZE, (U8*)&newsize, LEN_FILESIZE);       //change the filesize offset to newsize
 
     mkgReadNVM(fileAddr + OFFSET_FILESIZE, (U8 *)&fileSize, LEN_FILESIZE);
     tempAddr2 = fileAddr + sizeof(objFile) + fileSize;                          //contains the address of first file which is to be moved
@@ -273,12 +288,12 @@ void Decrease_MoveFiles(U32 fileAddr, U16 length)
         {
             fileSize = 0x00;
         }
-        tempAddr3 = tempAddr2 + sizeof(objFile) + fileSize;                          //contains the address of the second file which is to be moved     
+        tempAddr3 = tempAddr2 + sizeof(objFile) + fileSize;               //contains the address of the second file which is to be moved     
 
         //change the child Parent address to new location of file
         mkgReadNVM(tempAddr2 + OFFSET_childAddr, (U8 *)&ptr, LEN_ADDRESS);
         tempAddr4 = (U32)ptr;
-        tempAddr5 = tempAddr2 - length;
+        tempAddr5 = tempAddr2 - changeLength;
         while(tempAddr4 != NULL)
         {
             mkgWriteNVM(tempAddr4 + OFFSET_PARENTADDR, (U8 *)&tempAddr5, LEN_ADDRESS);
@@ -294,7 +309,7 @@ void Decrease_MoveFiles(U32 fileAddr, U16 length)
         tempAddr5 = (U32)ptr;
         if(tempAddr5 == tempAddr2)                              //check whether file is first child or not
         {
-            tempAddr5 -= length;
+            tempAddr5 -= changeLength;
             mkgWriteNVM(tempAddr4 + OFFSET_childAddr, (U8 *)&tempAddr5, LEN_ADDRESS);
         }
         else
@@ -306,10 +321,10 @@ void Decrease_MoveFiles(U32 fileAddr, U16 length)
                 tempAddr5 = (U32)ptr;
             }
 
-            tempAddr5 -= length;
+            tempAddr5 -= changeLength;
             mkgWriteNVM(tempAddr4 + OFFSET_SIBLINGADDR, (U8 *)&tempAddr5, LEN_ADDRESS);         //change the sibling address to new location of file
         }
-        mkgWriteNVM(tempAddr2 - length, (U8 *)tempAddr2, sizeof(objFile) + fileSize);       //shift the file to new location required
+        mkgWriteNVM(tempAddr2 - changeLength, (U8 *)tempAddr2, sizeof(objFile) + fileSize);       //shift the file to new location required
         
         //update tempAddr2, tempAddr3 to next files to be shift
         tempAddr2 = tempAddr3;
