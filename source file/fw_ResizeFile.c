@@ -137,7 +137,6 @@ void fw_ResizeFile()
 
     else if(oldsize > newsize)
     {
-        newsize = oldsize - newsize;
         Decrease_MoveFiles(fileAddr, oldsize);
 
         //update file size
@@ -275,7 +274,6 @@ void Decrease_MoveFiles(U32 fileAddr, U16 oldsize)
 
     tempAddr1 = (U32)getHashTable();
     setHashTable(tempAddr1 - changeLength);                   //change the next allocation address
-	mkgWriteNVM(fileAddr + OFFSET_FILESIZE, (U8*)&newsize, LEN_FILESIZE);       //change the filesize offset to newsize
 
     mkgReadNVM(fileAddr + OFFSET_FILESIZE, (U8 *)&fileSize, LEN_FILESIZE);
     tempAddr2 = fileAddr + sizeof(objFile) + fileSize;                          //contains the address of first file which is to be moved
@@ -329,5 +327,6 @@ void Decrease_MoveFiles(U32 fileAddr, U16 oldsize)
         //update tempAddr2, tempAddr3 to next files to be shift
         tempAddr2 = tempAddr3;
     }
+	mkgWriteNVM(fileAddr + OFFSET_FILESIZE, (U8*)&newsize, LEN_FILESIZE);       //change the filesize offset to newsize
     return;
 }
