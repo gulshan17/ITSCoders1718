@@ -76,7 +76,7 @@ void fw_ResizeFile()
                             value_array[0] = 1;
                             for(i=1;i<=filling_length;i++)
                             {
-                                value_array[i]=mkgInputBuffer[count+4+i];
+                                value_array[i]=mkgInputBuffer[count+3+i];
                             }
                         }
                         else
@@ -92,7 +92,7 @@ void fw_ResizeFile()
                             value_array[0] = 2;
                             for(i=1;i<=filling_length;i++)
                             {
-                                value_array[i]=mkgInputBuffer[count + 4 + i];
+                                value_array[i]=mkgInputBuffer[count + 3 + i];
                             }
                         }
                         else
